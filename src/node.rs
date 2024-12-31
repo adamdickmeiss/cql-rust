@@ -1,4 +1,4 @@
-pub struct CqlSt {
+pub struct St {
     index: String,
     index_uri: Option<String>,
     term: String,
@@ -7,13 +7,13 @@ pub struct CqlSt {
     modifiers: Option<Box<CqlNode>>,
 }
 
-pub struct CqlBoolean {
+pub struct Boolean {
     value: String,
     left: Option<Box<CqlNode>>,
     right: Option<Box<CqlNode>>,
 }
 
-pub struct CqlSort {
+pub struct Sort {
     index: String,
     next: Option<Box<CqlNode>>,
     modifiers: Option<Box<CqlNode>>,
@@ -21,14 +21,14 @@ pub struct CqlSort {
 }
 
 pub enum CqlNode {
-    St(CqlSt),
-    Boolean(CqlBoolean),
-    Sort(CqlSort),
+    St(St),
+    Boolean(Boolean),
+    Sort(Sort),
 }
 
 impl CqlNode {
     fn mk_sc(index: &str, relation: &str, term: &str) -> CqlNode {
-        let st = CqlSt {
+        let st = St {
             index: String::from(index),
             index_uri: None,
             term: String::from(term),
@@ -39,7 +39,7 @@ impl CqlNode {
         CqlNode::St(st)
     }
     fn mk_boolean(value: &str, left: Option<Box<CqlNode>>, right: Option<Box<CqlNode>>) -> CqlNode {
-        let bo = CqlBoolean {
+        let bo = Boolean {
             value: String::from(value),
             left,
             right,
@@ -47,7 +47,7 @@ impl CqlNode {
         CqlNode::Boolean(bo)
     }
     fn mk_sort(index: &str, modifiers: Option<Box<CqlNode>>) -> CqlNode {
-        let sort = CqlSort {
+        let sort = Sort {
             index: String::from(index),
             modifiers,
             next: None,
