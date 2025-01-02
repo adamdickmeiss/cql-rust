@@ -17,6 +17,8 @@ enum Token {
     GE,
     Exact,
     Modifier,
+    LP,
+    RP,
     PrefixName(String),
     SimpleString(String),
     And,
@@ -88,6 +90,14 @@ impl Parser {
             '/' => {
                 self.next(get);
                 return Ok(Token::Modifier);
+            }
+            '(' => {
+                self.next(get);
+                return Ok(Token::LP);
+            }
+            ')' => {
+                self.next(get);
+                return Ok(Token::RP);
             }
             '"' => {
                 self.next(get);
@@ -176,7 +186,7 @@ mod tests {
     #[test]
     fn lex_ops() {
         let mut my = Parser::new();
-        let mut it = "= == > >= < <= <>/".chars();
+        let mut it = "= == > >= < <= <>/()".chars();
         my.next(it.borrow_mut());
         let res = my.lex(it.borrow_mut());
         assert!(res.is_ok_and(|tok| tok == Token::EQ));
@@ -203,7 +213,28 @@ mod tests {
         assert!(res.is_ok_and(|tok| tok == Token::Modifier));
 
         let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::LP));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::RP));
+
+        let res = my.lex(it.borrow_mut());
         assert!(res.is_ok_and(|tok| tok == Token::EOS));
+
+        let mut it = "=".chars();
+        my.next(it.borrow_mut());
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::EQ));
+
+        let mut it = ">".chars();
+        my.next(it.borrow_mut());
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::GT));
+
+        let mut it = "<".chars();
+        my.next(it.borrow_mut());
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::LT));
     }
 
     #[test]
@@ -222,6 +253,56 @@ mod tests {
         my.next(it.borrow_mut());
         let res = my.lex(it.borrow_mut());
         assert!(res.is_ok_and(|tok| tok == Token::SimpleString(String::from("abc\\"))));
+    }
+
+    #[test]
+    fn simple_strings1() {
+        let mut my = Parser::new();
+        let mut it = " abc\\".chars();
+        my.next(it.borrow_mut());
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::SimpleString(String::from("abc\\"))));
+    }
+
+    #[test]
+    fn simple_strings2() {
+        let mut my = Parser::new();
+        let mut it = " dc.ti\\x ".chars();
+        my.next(it.borrow_mut());
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("dc.ti\\x"))));
+    }
+
+    #[test]
+    fn keywords() {
+        let mut my = Parser::new();
+        let mut it = "and or not prox sortby all any adj".chars();
+        my.next(it.borrow_mut());
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::And));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::Or));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::Not));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::Prox));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::Sortby));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("all"))));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("any"))));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("adj"))));
     }
 
     #[test]

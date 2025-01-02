@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate assert_matches;
+
 mod node;
 mod parser;
 
