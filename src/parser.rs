@@ -40,7 +40,10 @@ impl Parser {
         self.look_ch = get.next();
     }
 
-    fn lex(self: &mut Self, get: &mut dyn Iterator<Item = char>) -> Result<Token, ParseError> {
+    pub(crate) fn lex(
+        self: &mut Self,
+        get: &mut dyn Iterator<Item = char>,
+    ) -> Result<Token, ParseError> {
         while let Some(ch) = self.look_ch {
             println!("ch = {ch}");
             if ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n' {
@@ -136,22 +139,25 @@ impl Parser {
                         }
                     }
                 }
-                if s == "and" {
+                if s.eq_ignore_ascii_case("and") {
                     return Ok(Token::And);
                 }
-                if s == "or" {
+                if s.eq_ignore_ascii_case("or") {
                     return Ok(Token::Or);
                 }
-                if s == "not" {
+                if s.eq_ignore_ascii_case("not") {
                     return Ok(Token::Not);
                 }
-                if s == "prox" {
+                if s.eq_ignore_ascii_case("prox") {
                     return Ok(Token::Prox);
                 }
-                if s == "sortby" {
+                if s.eq_ignore_ascii_case("sortby") {
                     return Ok(Token::Sortby);
                 }
-                if s == "all" || s == "any" || s == "adj" {
+                if s.eq_ignore_ascii_case("all")
+                    || s.eq_ignore_ascii_case("any")
+                    || s.eq_ignore_ascii_case("adj")
+                {
                     relation_like = true;
                 }
                 if relation_like {
@@ -162,7 +168,7 @@ impl Parser {
         }
     }
 
-    fn parse(self: &mut Self, get: &mut dyn Iterator<Item = char>) -> Result<(), ParseError> {
+    pub fn parse(self: &mut Self, get: &mut dyn Iterator<Item = char>) -> Result<(), ParseError> {
         self.next(get);
         let tok = self.lex(get)?;
         if tok != Token::EOS {
@@ -277,7 +283,7 @@ mod tests {
     #[test]
     fn keywords() {
         let mut my = Parser::new();
-        let mut it = "and or not prox sortby all any adj".chars();
+        let mut it = "and OR Not prox sortby All aNy adJ".chars();
         my.next(it.borrow_mut());
 
         let res = my.lex(it.borrow_mut());
@@ -296,13 +302,13 @@ mod tests {
         assert!(res.is_ok_and(|tok| tok == Token::Sortby));
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("all"))));
+        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("All"))));
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("any"))));
+        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("aNy"))));
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("adj"))));
+        assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("adJ"))));
     }
 
     #[test]
