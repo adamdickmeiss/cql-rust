@@ -1,34 +1,11 @@
 use crate::node::CqlNode;
-
-#[derive(Debug, Clone)]
-pub struct ParseError;
+use crate::error::ParseError;
+use crate::lex::Token;
 
 pub struct Parser {
     strict: bool,
     look_ch: Option<char>,
     look: Token,
-}
-
-#[derive(PartialEq)]
-enum Token {
-    EOS,
-    EQ,
-    NE,
-    LT,
-    GT,
-    LE,
-    GE,
-    Exact,
-    Modifier,
-    LP,
-    RP,
-    PrefixName(String),
-    SimpleString(String),
-    And(String),
-    Or(String),
-    Not(String),
-    Prox(String),
-    Sortby(String),
 }
 
 impl Parser {
