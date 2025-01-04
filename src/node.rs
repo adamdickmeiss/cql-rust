@@ -1,21 +1,23 @@
-#[derive(Debug)]
+use std::rc::Rc;
+
+#[cfg_attr(test, derive(Debug))]
 pub struct St {
     index: String,
     index_uri: Option<String>,
     term: String,
     relation: String,
     relation_uri: Option<String>,
-    modifiers: Option<Box<CqlNode>>,
+    modifiers: Option<Rc<CqlNode>>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Boolean {
     value: String,
     left: Option<Box<CqlNode>>,
     right: Option<Box<CqlNode>>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Sort {
     index: String,
     next: Option<Box<CqlNode>>,
@@ -23,7 +25,7 @@ pub struct Sort {
     search: Option<Box<CqlNode>>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub enum CqlNode {
     St(St),
     Boolean(Boolean),
@@ -31,7 +33,22 @@ pub enum CqlNode {
 }
 
 impl CqlNode {
-    fn mk_sc(index: &str, relation: &str, term: &str) -> CqlNode {
+    pub(crate) fn mk_sc_dup(node: &CqlNode, term: &str) -> CqlNode {
+        if let CqlNode::St(st) = node {
+            let st2 = St {
+                index: st.index.clone(),
+                index_uri: st.index_uri.clone(),
+                term: String::from(term),
+                relation: st.relation.clone(),
+                relation_uri: st.relation_uri.clone(),
+                modifiers: st.modifiers.clone(),
+            };
+            return CqlNode::St(st2);
+        }
+        panic!("mk_sc_dup from non-st node");
+    }
+
+    pub(crate) fn mk_sc(index: &str, relation: &str, term: &str) -> CqlNode {
         let st = St {
             index: String::from(index),
             index_uri: None,
@@ -42,7 +59,11 @@ impl CqlNode {
         };
         CqlNode::St(st)
     }
-    fn mk_boolean(value: &str, left: Option<Box<CqlNode>>, right: Option<Box<CqlNode>>) -> CqlNode {
+    pub(crate) fn mk_boolean(
+        value: &str,
+        left: Option<Box<CqlNode>>,
+        right: Option<Box<CqlNode>>,
+    ) -> CqlNode {
         let bo = Boolean {
             value: String::from(value),
             left,
@@ -50,7 +71,7 @@ impl CqlNode {
         };
         CqlNode::Boolean(bo)
     }
-    fn mk_sort(index: &str, modifiers: Option<Box<CqlNode>>) -> CqlNode {
+    pub(crate) fn mk_sort(index: &str, modifiers: Option<Box<CqlNode>>) -> CqlNode {
         let sort = Sort {
             index: String::from(index),
             modifiers,

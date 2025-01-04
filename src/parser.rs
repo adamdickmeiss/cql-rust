@@ -1,9 +1,12 @@
-#[derive(Debug, Clone)]
-struct ParseError;
+use crate::node::CqlNode;
 
-struct Parser {
+#[derive(Debug, Clone)]
+pub struct ParseError;
+
+pub struct Parser {
     strict: bool,
     look_ch: Option<char>,
+    look: Token,
 }
 
 #[derive(PartialEq)]
@@ -21,18 +24,19 @@ enum Token {
     RP,
     PrefixName(String),
     SimpleString(String),
-    And,
-    Or,
-    Not,
-    Prox,
-    Sortby,
+    And(String),
+    Or(String),
+    Not(String),
+    Prox(String),
+    Sortby(String),
 }
 
 impl Parser {
-    fn new() -> Parser {
+    pub fn new() -> Parser {
         Parser {
             strict: false,
             look_ch: None,
+            look: Token::EOS,
         }
     }
 
@@ -40,10 +44,7 @@ impl Parser {
         self.look_ch = get.next();
     }
 
-    pub(crate) fn lex(
-        self: &mut Self,
-        get: &mut dyn Iterator<Item = char>,
-    ) -> Result<Token, ParseError> {
+    fn lex(self: &mut Self, get: &mut dyn Iterator<Item = char>) -> Result<Token, ParseError> {
         while let Some(ch) = self.look_ch {
             println!("ch = {ch}");
             if ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n' {
@@ -140,19 +141,19 @@ impl Parser {
                     }
                 }
                 if s.eq_ignore_ascii_case("and") {
-                    return Ok(Token::And);
+                    return Ok(Token::And(s));
                 }
                 if s.eq_ignore_ascii_case("or") {
-                    return Ok(Token::Or);
+                    return Ok(Token::Or(s));
                 }
                 if s.eq_ignore_ascii_case("not") {
-                    return Ok(Token::Not);
+                    return Ok(Token::Not(s));
                 }
                 if s.eq_ignore_ascii_case("prox") {
-                    return Ok(Token::Prox);
+                    return Ok(Token::Prox(s));
                 }
                 if s.eq_ignore_ascii_case("sortby") {
-                    return Ok(Token::Sortby);
+                    return Ok(Token::Sortby(s));
                 }
                 if s.eq_ignore_ascii_case("all")
                     || s.eq_ignore_ascii_case("any")
@@ -168,13 +169,114 @@ impl Parser {
         }
     }
 
-    pub fn parse(self: &mut Self, get: &mut dyn Iterator<Item = char>) -> Result<(), ParseError> {
+    fn search_term(self: &mut Self) -> Option<String> {
+        match &self.look {
+            Token::SimpleString(name)
+            | Token::PrefixName(name)
+            | Token::And(name)
+            | Token::Or(name)
+            | Token::Not(name)
+            | Token::Prox(name)
+            | Token::Sortby(name) => {
+                return Some(String::from(name));
+            }
+            _ => return None,
+        }
+    }
+
+    fn relation(self: &mut Self) -> Option<String> {
+        let lead;
+        match &self.look {
+            Token::EQ => lead = "=",
+            Token::GT => lead = ">",
+            Token::LT => lead = "<",
+            Token::GE => lead = ">=",
+            Token::LE => lead = "<=",
+            Token::NE => lead = "<>",
+            Token::Exact => lead = "==",
+            Token::PrefixName(name) => lead = name,
+            _ => return None,
+        }
+        Some(String::from(lead))
+    }
+
+    fn boolean(self: &mut Self) -> Option<String> {
+        match &self.look {
+            Token::And(name)
+            | Token::Or(name)
+            | Token::Not(name)
+            | Token::Prox(name) => {
+                return Some(String::from(name))
+            }
+            _ => return None,
+        }
+    }
+
+    fn search_clause(
+        self: &mut Self,
+        get: &mut dyn Iterator<Item = char>,
+        rel: &CqlNode,
+    ) -> Result<CqlNode, ParseError> {
+        if self.look == Token::LP {
+            self.look = self.lex(get)?;
+            let res = self.cql_query(get, rel)?;
+            if self.look != Token::RP {
+                return Err(ParseError);
+            }
+            self.look = self.lex(get)?;
+            return Ok(res);
+        }
+        let n = self.search_term();
+        if let Some(n) = n {
+            self.look = self.lex(get)?;
+            if let Some(relation) = self.relation() {
+                self.look = self.lex(get)?;
+                // TODO: modifiers here
+                let rel = CqlNode::mk_sc(&n, &relation, "");
+                return self.search_clause(get, &rel);
+            }
+            return Ok(CqlNode::mk_sc_dup(rel, &n));
+        }
+        // missing search !
+        Err(ParseError)
+    }
+
+    fn scoped_clause(
+        self: &mut Self,
+        get: &mut dyn Iterator<Item = char>,
+        rel: &CqlNode,
+    ) -> Result<CqlNode, ParseError> {
+        let mut left = self.search_clause(get, rel)?;
+        while let Some(op) = self.boolean() {
+            self.look = self.lex(get)?;
+            // TODO: boolean modifiers
+            let right = self.search_clause(get, rel)?;
+            left = CqlNode::mk_boolean(&op, Some(Box::new(left)), Some(Box::new(right)));
+        }
+        Ok(left)
+    }
+
+    fn cql_query(
+        self: &mut Self,
+        get: &mut dyn Iterator<Item = char>,
+        rel: &CqlNode,
+    ) -> Result<CqlNode, ParseError> {
+        let res = self.scoped_clause(get, rel)?;
+        Ok(res)
+    }
+
+    pub fn parse(
+        self: &mut Self,
+        get: &mut dyn Iterator<Item = char>,
+    ) -> Result<CqlNode, ParseError> {
         self.next(get);
-        let tok = self.lex(get)?;
-        if tok != Token::EOS {
+        self.look = self.lex(get)?;
+        let rel = CqlNode::mk_sc("cql.serverChoise", "=", "");
+        let res = self.cql_query(get, &rel)?;
+        if self.look != Token::EOS {
             return Err(ParseError);
         }
-        Ok(())
+        Ok(res)
     }
 }
 
@@ -287,19 +389,19 @@ mod tests {
         my.next(it.borrow_mut());
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::And));
+        assert!(res.is_ok_and(|tok| tok == Token::And(String::from("and"))));
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::Or));
+        assert!(res.is_ok_and(|tok| tok == Token::Or(String::from("OR"))));
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::Not));
+        assert!(res.is_ok_and(|tok| tok == Token::Not(String::from("Not"))));
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::Prox));
+        assert!(res.is_ok_and(|tok| tok == Token::Prox(String::from("prox"))));
 
         let res = my.lex(it.borrow_mut());
-        assert!(res.is_ok_and(|tok| tok == Token::Sortby));
+        assert!(res.is_ok_and(|tok| tok == Token::Sortby(String::from("sortby"))));
 
         let res = my.lex(it.borrow_mut());
         assert!(res.is_ok_and(|tok| tok == Token::PrefixName(String::from("All"))));
@@ -313,9 +415,30 @@ mod tests {
 
     #[test]
     fn empty() {
-        let s = String::from("  ");
         let mut my = Parser::new();
-        let res = my.parse(s.chars().borrow_mut());
+        let res = my.parse("  ".chars().borrow_mut());
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn foo() {
+        let mut my = Parser::new();
+        let res = my.parse("foo".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("ti = computer".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("(ti = computer)".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("((ti = computer))".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("ti = (computer)".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("a and b".chars().borrow_mut());
         assert!(res.is_ok());
     }
 }
