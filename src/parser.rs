@@ -251,7 +251,7 @@ impl Parser {
             self.look = self.lex(get)?;
             // TODO: boolean modifiers
             let right = self.search_clause(get, rel)?;
-            left = CqlNode::mk_boolean(&op, Some(Box::new(left)), Some(Box::new(right)));
+            left = CqlNode::mk_boolean(&op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }

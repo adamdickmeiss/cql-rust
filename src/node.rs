@@ -13,8 +13,8 @@ pub struct St {
 #[cfg_attr(test, derive(Debug))]
 pub struct Boolean {
     value: String,
-    left: Option<Box<CqlNode>>,
-    right: Option<Box<CqlNode>>,
+    left: Box<CqlNode>,
+    right: Box<CqlNode>,
 }
 
 #[cfg_attr(test, derive(Debug))]
@@ -61,8 +61,8 @@ impl CqlNode {
     }
     pub(crate) fn mk_boolean(
         value: &str,
-        left: Option<Box<CqlNode>>,
-        right: Option<Box<CqlNode>>,
+        left: Box<CqlNode>,
+        right: Box<CqlNode>,
     ) -> CqlNode {
         let bo = Boolean {
             value: String::from(value),
@@ -101,16 +101,6 @@ mod tests {
     }
 
     #[test]
-    fn create_boolean() {
-        let my_bool = CqlNode::mk_boolean("and", None, None);
-        assert_matches!(my_bool, CqlNode::Boolean(n) => {
-            assert_eq!(n.value, "and");
-            assert!(n.left.is_none());
-            assert!(n.right.is_none());
-        });
-    }
-
-    #[test]
     fn create_sort() {
         let my_sort = CqlNode::mk_sort("date", None);
         assert_matches!(my_sort, CqlNode::Sort(n) => {
@@ -125,14 +115,15 @@ mod tests {
     fn create_tree() {
         let my_sc1 = Box::new(CqlNode::mk_sc("ti", "=", "house"));
         let my_sc2 = Box::new(CqlNode::mk_sc("au", "=", "andersen"));
-        let my_bool = CqlNode::mk_boolean("and", Some(my_sc1), Some(my_sc2));
+        let my_bool = CqlNode::mk_boolean("And", my_sc1, my_sc2);
 
         assert_matches!(my_bool, CqlNode::Boolean(n) => {
-            assert_matches!(n.left.as_deref().unwrap(), CqlNode::St(n) => {
+            assert_eq!("And", n.value);
+            assert_matches!(*n.left, CqlNode::St(n) => {
                 assert_eq!("ti", n.index);
                 assert_eq!("house", n.term);
             });
-            assert_matches!(n.right.as_deref().unwrap(), CqlNode::St(n) => {
+            assert_matches!(*n.right, CqlNode::St(n) => {
                 assert_eq!("au", n.index);
                 assert_eq!("andersen", n.term);
             });
