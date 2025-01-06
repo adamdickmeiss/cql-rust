@@ -1,6 +1,8 @@
 use crate::node::CqlNode;
+use crate::node::St;
 use crate::error::ParseError;
 use crate::lex::Token;
+use std::rc::Rc;
 
 pub struct Parser {
     strict: bool,
@@ -161,7 +163,7 @@ impl Parser {
         }
     }
 
-    fn relation(self: &mut Self) -> Option<String> {
+    fn relation_symbol(self: &mut Self) -> Option<String> {
         let lead;
         match &self.look {
             Token::EQ => lead = "=",
@@ -171,10 +173,19 @@ impl Parser {
             Token::LE => lead = "<=",
             Token::NE => lead = "<>",
             Token::Exact => lead = "==",
-            Token::PrefixName(name) => lead = name,
             _ => return None,
         }
         Some(String::from(lead))
+    }
+
+    fn relation(self: &mut Self) -> Option<String> {
+        if let Some(lead) = self.relation_symbol() {
+            return Some(lead)
+        }
+        if let Token::PrefixName(name) = &self.look {
+            return Some(String::from(name));
+        }
+        None
     }
 
     fn boolean(self: &mut Self) -> Option<String> {
@@ -189,10 +200,34 @@ impl Parser {
         }
     }
 
+    fn modifiers(self: &mut Self, get: &mut dyn Iterator<Item = char>) -> Result<Option<Rc<St>>, ParseError> {
+        let mut res: Option<Rc<St>> = None;
+        while let Token::Modifier = &self.look {
+            self.look = self.lex(get)?;
+            if let Some(modifier) = self.search_term() {
+                self.look = self.lex(get)?;
+                if let Some(relation) = self.relation_symbol() {
+                    self.look = self.lex(get)?;
+                    if let Some(value) = self.search_term() {
+                        res = Some(Rc::new(CqlNode::mk_sc(&modifier, &relation, Some(&value), None)));
+                        self.look = self.lex(get)?;
+                    } else {
+                        return Err(ParseError);
+                    }
+                } else {
+                    res = Some(Rc::new(CqlNode::mk_sc(&modifier, "", None, None)));
+                }
+            } else {
+                return Err(ParseError);
+            }
+        }
+        Ok(res)
+    }
+
     fn search_clause(
         self: &mut Self,
         get: &mut dyn Iterator<Item = char>,
-        rel: &CqlNode,
+        rel: &St,
     ) -> Result<CqlNode, ParseError> {
         if self.look == Token::LP {
             self.look = self.lex(get)?;
@@ -208,8 +243,8 @@ impl Parser {
             self.look = self.lex(get)?;
             if let Some(relation) = self.relation() {
                 self.look = self.lex(get)?;
-                // TODO: modifiers here
-                let rel = CqlNode::mk_sc(&n, &relation, "");
+                let modifiers = self.modifiers(get)?;
+                let rel = CqlNode::mk_sc(&n, &relation, None, modifiers);
                 return self.search_clause(get, &rel);
             }
             return Ok(CqlNode::mk_sc_dup(rel, &n));
@@ -221,14 +256,14 @@ impl Parser {
     fn scoped_clause(
         self: &mut Self,
         get: &mut dyn Iterator<Item = char>,
-        rel: &CqlNode,
+        rel: &St,
     ) -> Result<CqlNode, ParseError> {
         let mut left = self.search_clause(get, rel)?;
         while let Some(op) = self.boolean() {
             self.look = self.lex(get)?;
-            // TODO: boolean modifiers
+            let modifiers = self.modifiers(get)?;
             let right = self.search_clause(get, rel)?;
-            left = CqlNode::mk_boolean(&op, Box::new(left), Box::new(right));
+            left = CqlNode::mk_boolean(&op, Box::new(left), Box::new(right), modifiers);
         }
         Ok(left)
     }
@@ -236,7 +271,7 @@ impl Parser {
     fn cql_query(
         self: &mut Self,
         get: &mut dyn Iterator<Item = char>,
-        rel: &CqlNode,
+        rel: &St,
     ) -> Result<CqlNode, ParseError> {
         let res = self.scoped_clause(get, rel)?;
         Ok(res)
@@ -248,12 +283,21 @@ impl Parser {
     ) -> Result<CqlNode, ParseError> {
         self.next(get);
         self.look = self.lex(get)?;
-        let rel = CqlNode::mk_sc("cql.serverChoise", "=", "");
-        let res = self.cql_query(get, &rel)?;
+        let rel = CqlNode::mk_sc("cql.serverChoice", "=", None, None);
+        let search = self.cql_query(get, &rel)?;
+        let mut sort = Vec::new();
+        if let Token::Sortby(_sortby) = &self.look{
+            self.look = self.lex(get)?;
+            while let Some(index) = &self.search_term() {
+                self.look = self.lex(get)?;
+                let modifiers = self.modifiers(get)?;
+                sort.push(CqlNode::mk_sc(&index, "", None, modifiers));
+            }
+        }
         if self.look != Token::EOS {
             return Err(ParseError);
         }
-        Ok(res)
+        Ok(CqlNode::mk_root(Box::new(search), sort))
     }
 }
 
@@ -403,7 +447,16 @@ mod tests {
         let res = my.parse("foo".chars().borrow_mut());
         assert!(res.is_ok());
 
+        let res = my.parse("ti adj computer".chars().borrow_mut());
+        assert!(res.is_ok());
+
         let res = my.parse("ti = computer".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("ti = /a/b=c computer".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("ti = /a=b computer".chars().borrow_mut());
         assert!(res.is_ok());
 
         let res = my.parse("(ti = computer)".chars().borrow_mut());
@@ -417,5 +470,21 @@ mod tests {
 
         let res = my.parse("a and b".chars().borrow_mut());
         assert!(res.is_ok());
+
+        let res = my.parse("a and/x1=y1 b".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("a and/x1=y1/x2=y2 b".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("a sortby title".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("a sortby title date".chars().borrow_mut());
+        assert!(res.is_ok());
+
+        let res = my.parse("a sortby title/a/b date/x=y".chars().borrow_mut());
+        assert!(res.is_ok());
+
     }
 }

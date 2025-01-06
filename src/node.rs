@@ -4,10 +4,10 @@ use std::rc::Rc;
 pub struct St {
     index: String,
     index_uri: Option<String>,
-    term: String,
+    term: Option<String>,
     relation: String,
     relation_uri: Option<String>,
-    modifiers: Option<Rc<CqlNode>>,
+    modifiers: Option<Rc<St>>,
 }
 
 #[cfg_attr(test, derive(Debug))]
@@ -15,70 +15,70 @@ pub struct Boolean {
     value: String,
     left: Box<CqlNode>,
     right: Box<CqlNode>,
+    modifiers: Option<Rc<St>>,
 }
 
 #[cfg_attr(test, derive(Debug))]
-pub struct Sort {
-    index: String,
-    next: Option<Box<CqlNode>>,
-    modifiers: Option<Box<CqlNode>>,
-    search: Option<Box<CqlNode>>,
+pub struct Root {
+    search: Box<CqlNode>,
+    sort: Vec<St>,
 }
 
 #[cfg_attr(test, derive(Debug))]
 pub enum CqlNode {
     St(St),
     Boolean(Boolean),
-    Sort(Sort),
+    Root(Root),
 }
 
 impl CqlNode {
-    pub(crate) fn mk_sc_dup(node: &CqlNode, term: &str) -> CqlNode {
-        if let CqlNode::St(st) = node {
-            let st2 = St {
-                index: st.index.clone(),
-                index_uri: st.index_uri.clone(),
-                term: String::from(term),
-                relation: st.relation.clone(),
-                relation_uri: st.relation_uri.clone(),
-                modifiers: st.modifiers.clone(),
-            };
-            return CqlNode::St(st2);
-        }
-        panic!("mk_sc_dup from non-st node");
+    pub(crate) fn mk_sc_dup(st: &St, term: &str) -> CqlNode {
+        let st2 = St {
+            index: st.index.clone(),
+            index_uri: st.index_uri.clone(),
+            term: Some(String::from(term)),
+            relation: st.relation.clone(),
+            relation_uri: st.relation_uri.clone(),
+            modifiers: st.modifiers.clone(),
+        };
+        return CqlNode::St(st2);
     }
 
-    pub(crate) fn mk_sc(index: &str, relation: &str, term: &str) -> CqlNode {
-        let st = St {
+    pub(crate) fn mk_sc(index: &str, relation: &str, term: Option<&str>, modifiers: Option<Rc<St>>) -> St {
+        let term = match term {
+            Some(s) => Some(String::from(s)),
+            _ => None,
+        };
+        St {
             index: String::from(index),
             index_uri: None,
-            term: String::from(term),
+            term,
             relation: String::from(relation),
             relation_uri: None,
-            modifiers: None,
-        };
-        CqlNode::St(st)
+            modifiers,
+        }
     }
+
     pub(crate) fn mk_boolean(
         value: &str,
         left: Box<CqlNode>,
         right: Box<CqlNode>,
+        modifiers: Option<Rc<St>>,
     ) -> CqlNode {
         let bo = Boolean {
             value: String::from(value),
             left,
             right,
+            modifiers,
         };
         CqlNode::Boolean(bo)
     }
-    pub(crate) fn mk_sort(index: &str, modifiers: Option<Box<CqlNode>>) -> CqlNode {
-        let sort = Sort {
-            index: String::from(index),
-            modifiers,
-            next: None,
-            search: None,
+    pub(crate) fn mk_root(search: Box<CqlNode>, sort: Vec<St>) -> CqlNode {
+        let root = Root {
+            search,
+            sort,
         };
-        CqlNode::Sort(sort)
+        CqlNode::Root(root)
     }
 }
 
@@ -88,44 +88,40 @@ mod tests {
 
     #[test]
     fn create_sc() {
-        let my_sc = CqlNode::mk_sc("ti", "=", "value");
-        assert_matches!(my_sc, CqlNode::St(n) => {
-            assert_eq!(n.index, "ti");
-            assert_eq!(n.relation, "=");
-            assert_eq!(n.term, "value");
-            assert!(n.index_uri.is_none());
-            assert!(n.relation_uri.is_none());
-            assert!(n.modifiers.is_none());
-            assert!(n.modifiers.is_none());
-        });
+        let n = CqlNode::mk_sc("ti", "=", Some(&"value"), None);
+        assert_eq!(n.index, "ti");
+        assert_eq!(n.relation, "=");
+        assert!(n.term.is_some_and(|val| val == "value"));
+        assert!(n.index_uri.is_none());
+        assert!(n.relation_uri.is_none());
+        assert!(n.modifiers.is_none());
+        assert!(n.modifiers.is_none());
     }
 
     #[test]
     fn create_sort() {
-        let my_sort = CqlNode::mk_sort("date", None);
-        assert_matches!(my_sort, CqlNode::Sort(n) => {
-            assert_eq!(n.index, "date");
-            assert!(n.modifiers.is_none());
-            assert!(n.next.is_none());
-            assert!(n.search.is_none());
+        let sc = CqlNode::St(CqlNode::mk_sc("ti", "=", None, None));
+        let my_root = CqlNode::mk_root(Box::new(sc), Vec::new());
+            assert_matches!(my_root, CqlNode::Root(n) => {
+                assert!(n.sort.len() == 0);
         });
     }
 
     #[test]
     fn create_tree() {
-        let my_sc1 = Box::new(CqlNode::mk_sc("ti", "=", "house"));
-        let my_sc2 = Box::new(CqlNode::mk_sc("au", "=", "andersen"));
-        let my_bool = CqlNode::mk_boolean("And", my_sc1, my_sc2);
+        let my_sc1 = Box::new(CqlNode::St(CqlNode::mk_sc("ti", "=", Some(&"house"), None)));
+        let my_sc2 = Box::new(CqlNode::St(CqlNode::mk_sc("au", "=", Some(&"andersen"), None)));
+        let my_bool = CqlNode::mk_boolean("And", my_sc1, my_sc2, None);
 
         assert_matches!(my_bool, CqlNode::Boolean(n) => {
             assert_eq!("And", n.value);
             assert_matches!(*n.left, CqlNode::St(n) => {
                 assert_eq!("ti", n.index);
-                assert_eq!("house", n.term);
+                assert!(n.term.is_some_and(|val| val == "house"));
             });
             assert_matches!(*n.right, CqlNode::St(n) => {
                 assert_eq!("au", n.index);
-                assert_eq!("andersen", n.term);
+                assert!(n.term.is_some_and(|val| val == "andersen"));
             });
         });
     }
