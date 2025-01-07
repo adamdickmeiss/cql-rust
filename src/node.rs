@@ -44,7 +44,12 @@ impl CqlNode {
         return CqlNode::St(st2);
     }
 
-    pub(crate) fn mk_sc(index: &str, relation: &str, term: Option<&str>, modifiers: Option<Rc<St>>) -> St {
+    pub(crate) fn mk_sc(
+        index: &str,
+        relation: &str,
+        term: Option<&str>,
+        modifiers: Option<Rc<St>>,
+    ) -> St {
         let term = match term {
             Some(s) => Some(String::from(s)),
             _ => None,
@@ -74,10 +79,7 @@ impl CqlNode {
         CqlNode::Boolean(bo)
     }
     pub(crate) fn mk_root(search: Box<CqlNode>, sort: Vec<St>) -> CqlNode {
-        let root = Root {
-            search,
-            sort,
-        };
+        let root = Root { search, sort };
         CqlNode::Root(root)
     }
 }
@@ -102,7 +104,7 @@ mod tests {
     fn create_sort() {
         let sc = CqlNode::St(CqlNode::mk_sc("ti", "=", None, None));
         let my_root = CqlNode::mk_root(Box::new(sc), Vec::new());
-            assert_matches!(my_root, CqlNode::Root(n) => {
+        assert_matches!(my_root, CqlNode::Root(n) => {
                 assert!(n.sort.len() == 0);
         });
     }
@@ -110,7 +112,12 @@ mod tests {
     #[test]
     fn create_tree() {
         let my_sc1 = Box::new(CqlNode::St(CqlNode::mk_sc("ti", "=", Some(&"house"), None)));
-        let my_sc2 = Box::new(CqlNode::St(CqlNode::mk_sc("au", "=", Some(&"andersen"), None)));
+        let my_sc2 = Box::new(CqlNode::St(CqlNode::mk_sc(
+            "au",
+            "=",
+            Some(&"andersen"),
+            None,
+        )));
         let my_bool = CqlNode::mk_boolean("And", my_sc1, my_sc2, None);
 
         assert_matches!(my_bool, CqlNode::Boolean(n) => {

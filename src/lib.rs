@@ -3,6 +3,6 @@
 extern crate assert_matches;
 
 pub mod error;
-pub mod lex;
+pub mod lexer;
 pub mod node;
 pub mod parser;
