@@ -112,6 +112,7 @@ impl Lexer {
                 let mut s = String::new();
                 while let Some(ch) = self.look_ch {
                     if ch == '"' {
+                        self.next(get);
                         break;
                     }
                     s.push(ch);
@@ -243,10 +244,16 @@ mod tests {
 
     #[test]
     fn lex_quoted_strings1() {
-        let mut it = " \"abc\\\"d\"".chars();
+        let mut it = " \"abc\\\"d\"\"\"".chars();
         let mut my = Lexer::new();
         let res = my.lex(it.borrow_mut());
         assert!(res.is_ok_and(|tok| tok == Token::SimpleString(String::from("abc\\\"d"))));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::SimpleString(String::from(""))));
+
+        let res = my.lex(it.borrow_mut());
+        assert!(res.is_ok_and(|tok| tok == Token::EOS));
     }
 
     #[test]
