@@ -3,20 +3,17 @@ use crate::error::ParseError;
 #[derive(PartialEq)]
 pub(crate) enum Token {
     EOS,
-    EQ,
-    NE,
-    LT,
-    GT,
-    LE,
-    GE,
-    Exact,
+    Relop(String),
+    And(String),
+    Or(String),
+    Not(String),
+    Prox(String),
+    PrefixName(String),
+    SimpleString(String),
+    Sortby(String),
     Modifier,
     LP,
     RP,
-    PrefixName(String),
-    SimpleString(String),
-    Boolop(String),
-    Sortby(String),
 }
 
 pub(crate) struct Lexer {

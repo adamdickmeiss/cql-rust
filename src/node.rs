@@ -1,6 +1,67 @@
 use std::rc::Rc;
 
 #[cfg_attr(test, derive(Debug))]
+pub struct Query {
+    clause: Clause,
+    sortSpec: Sort,
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub struct Sort {
+	index: String,
+	modifiers: Vec<Modifier>,
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub struct Modifier {
+	name: String,
+	relation: String,
+	value: String
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub struct Clause {
+    prefixMap: Vec<Prefix>,
+    triple: Triple,
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub enum Triple {
+    searchClause(SearchClause),
+    boolClause(BoolClause),
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub struct Prefix {
+    prefix: String,
+    uri: String,
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub struct SearchClause {
+    index: String,
+    relation: String,
+    modifiers: Vec<Modifier>,
+    term: String
+}
+
+#[cfg_attr(test, derive(Debug))]
+enum Operator {
+    And,
+    Or,
+    Not,
+    Prox
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub struct BoolClause {
+    left: Box<Clause>,
+    operator: Operator,
+    modifiers: Vec<Modifier>,
+    right: Box<Clause>,
+}
+
+#[cfg_attr(test, derive(Debug))]
 pub struct St {
     index: String,
     index_uri: Option<String>,
